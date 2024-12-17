@@ -82,13 +82,27 @@ class Renderer:
 			ranges.append(ContinuousRange(new_range_start, new_range_end))
 		return ranges
 
-		
+	def get_partition(self, y_position, partitions) -> str:
+		for i, partition in enumerate(partitions):
+			if y_position in partition:
+				return i
+		raise ValueError("Object is outside the screen and could not be mapped")
 
-	def project_onto_screen(self, block:Block):
+
+	def project_onto_screen(self, ranges:List[ContinuousRange], block:Block):
 		'''
 		Projects the block onto the quantized screen
 		'''
-		pass
+		topmost_partition_index = self.get_partition(block.top, ranges)
+		bottommost_partition_index = self.get_partition(block.bottom, ranges)
+		active_partitions = range(topmost_partition_index, bottommost_partition_index+1)
+		return active_partitions
+	
+	def create_vector_from_partitions(self, active_partition_indices:list[int], resolution:int):
+		vector = [0]*resolution
+		for index in active_partition_indices:
+			vector[index] = 1
+		return vector
 
 	def get_position_vector(self, block:Block):
 		rendered_block = self.get_rendered_block(block)
