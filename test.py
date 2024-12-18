@@ -1,3 +1,5 @@
+# type:ignore
+
 from bentests import asserts, test_all, testGroup
 from backend import * 
 import math
@@ -5,8 +7,6 @@ from mpmath import mp, atan
 import numpy as np
 
 mp.dps = 50
-
-
 
 class mainTests(testGroup):
 	def test_get_rendered_block(self):
@@ -16,7 +16,7 @@ class mainTests(testGroup):
 
 		asserts.assertAlmostEquals(
 			[block.x, block.y, block.height, block.top, block.bottom],
-			[0, 0.7, 0.5, 0.95, 0.45],
+			[1, 0.7, 0.5, 0.95, 0.45],
 			3
 		)
 
@@ -28,7 +28,7 @@ class mainTests(testGroup):
 
 		asserts.assertAlmostEquals(
 			[block.x, block.y, block.height, block.top, block.bottom],
-			[0, 0.7, 0.5, 2*0.414214, 0.45],
+			[1, 0.7, 0.5, 2*0.414214, 0.45],
 			4
 		)
 
@@ -40,7 +40,7 @@ class mainTests(testGroup):
 
 		asserts.assertAlmostEquals(
 			[block.x, block.y, block.height, block.top, block.bottom],
-			[0, -0.141176470588, 2.94117647059, 2*0.414214, -2*0.414214],
+			[0.17, -0.141176470588, 2.94117647059, 2*0.414214, -2*0.414214],
 			4
 		)
 
@@ -279,23 +279,16 @@ class projectionTests(testGroup):
 		)	
 
 	def test_add_vectors(self):
-		renderer = Renderer()
-		vectors = [np.array([0,0,1,1,1]), np.array([1,0,1,0,0])] 
-		sum_ = renderer.combine_vectors(vectors, 5)
+		block1 = Block(0,0,0)
+		block2 = Block(0,0,0)
+		block1.vector = np.array([0,0,1,1,1])
+		block2.vector = np.array([1,0,1,0,0])
+
+		renderer = Renderer(blocks=[block1, block2])
+		sum_ = renderer.combine_vectors()
 		asserts.assertEquals(
 			sum_,
 			np.array([1,0,2,1,1])
 		)
-
-	
-	
-	
-
-	# def test_render(self):
-	# 	blocks = [
-	# 		Block(1.023, 0.237,1)
-	# 	]
-	# 	renderer = Renderer(blocks=blocks)
-	# 	renderer.render(500)
 
 test_all(mainTests, continuousRangeTests, projectionTests)

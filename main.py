@@ -7,7 +7,6 @@ def test_render():
 	renderer = Renderer(blocks=blocks, camera=Camera(forced_screen_height=1))
 	renderer.render(500)
 
-
 def try_with_two_blocks():
 	blocks = [
 		Block(x=1.72,y=0.37,height=0.072),
