@@ -1,5 +1,5 @@
 from bentests import asserts, test_all, testGroup
-from main import * 
+from backend import * 
 import math
 from mpmath import mp, atan
 import numpy as np
