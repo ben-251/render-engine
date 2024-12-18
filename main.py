@@ -4,6 +4,10 @@ import math
 from PIL import Image
 import numpy as np
 from typing import List, Literal, Optional
+from mpmath import mp, tan, atan
+
+mp.dps = 50  
+
 
 class ContinuousRange:
     def __init__(self, start, stop):
@@ -17,9 +21,16 @@ class Camera:
 	x:float
 	y:float
 
-	def __init__(self,x=None,y=None,theta=None) -> None:
-		if theta is None: 
+	def __init__(self,x=None,y=None,theta=None,forced_screen_height=None) -> None:
+		if (theta is None) and (not forced_screen_height is None): 
+			theta = 2*atan(forced_screen_height/4)
+		elif (not theta is None) and (forced_screen_height is None):
+			theta = theta
+		elif theta is None and forced_screen_height is None:
 			theta = math.pi/4
+		else:
+			raise ValueError("Theta and forced_screen_height can't both be set")
+		
 		if x is None:
 			x = 0
 		if y is None:
@@ -28,7 +39,7 @@ class Camera:
 		self.x = x
 		self.y = y
 		self.theta = theta
-		self.m = math.tan(0.5 * theta)
+		self.m = tan(0.5 * theta)
 
 class Screen:
 	def __init__(self) -> None:
@@ -39,6 +50,15 @@ class Screen:
 		self.top:float = self.y + 0.5 * self.height
 		self.bottom:float = self.y - 0.5 * self.height
 
+
+class ProjectionScreen:
+	def __init__(self, camera:Camera) -> None:
+		self.x = 2
+		self.y = 0
+		self.top = camera.m * self.x # intersection of screen.x and y = mx
+		self.bottom = -camera.m * self.x # y = -mx
+		self.height = 2 * camera.m * self.x 
+
 class Block:
 	def __init__(self,x,y,height) -> None:
 		self.x:float = x
@@ -48,35 +68,29 @@ class Block:
 		self.bottom:float = self.y - 0.5*self.height
 
 class Renderer:
-	def __init__(self, blocks:Optional[List[Block]]=None) -> None:
-		self.camera = Camera()
+	def __init__(self, blocks:Optional[List[Block]]=None, camera:Optional[Camera]=None) -> None:
+		self.camera = Camera() if camera is None else camera
 		self.screen = Screen()
 		self.blocks:List[Block] = [] if blocks is None else blocks
-		self.BACK_WALL_X = 2
+		self.projected_screen = ProjectionScreen(self.camera)
 
 	def get_rendered_block(self,block:Block):
-		scale_factor = self.BACK_WALL_X / block.x # (y_{bw} = m x_{bw}) / (y_b = m x_b) and so the Ms cancel
+		scale_factor = self.projected_screen.x / block.x # (y_p = m x_p) / (y_b = m x_b) and so the Ms cancel
 		new_y = scale_factor*block.y
 		new_height = scale_factor*block.height
 		new_block = Block(0, new_y, new_height) # the x doesn't matter
-		self.screen.top = self.camera.m * self.BACK_WALL_X
-		self.screen.bottom = -self.camera.m * self.BACK_WALL_X
-		self.screen.height = 2 * self.camera.m * self.BACK_WALL_X
 		return new_block
 
 	def trim_out_of_view(self, block:Block):
-		block.top = min(block.top, self.camera.m * self.BACK_WALL_X) # y = mx
-		block.bottom = max(block.bottom, -self.camera.m * self.BACK_WALL_X ) # y = -mx
+		block.top = min(block.top, self.projected_screen.top)
+		block.bottom = max(block.bottom, self.projected_screen.bottom)
 
 	def normalize(self, placed_object:Screen|Block):
-		#TODO: before adding 0.5, we need to make sure it's actually -1 to 1, 
-		# since rn the screen (and everything on it) ranges from -mx to mx.
-		# divide both sides by 2mx (2mx as opposed to mx because it's centered around origin and is yet to be nudged up.)
-		normalizing_scale = 1/(2*self.camera.m * self.BACK_WALL_X)
-		placed_object.y *= normalizing_scale
-		placed_object.top *= normalizing_scale
-		placed_object.bottom *= normalizing_scale
-		placed_object.height *= normalizing_scale
+		#TODO: before adding 0.5, we need to make sure it's actually -1 to 1, so we scale everything down to the size of the projected screen
+		placed_object.y /= self.projected_screen.height
+		placed_object.top /= self.projected_screen.height
+		placed_object.bottom /= self.projected_screen.height
+		placed_object.height /= self.projected_screen.height
 		placed_object.y += 0.5
 		placed_object.top += 0.5
 		placed_object.bottom += 0.5
@@ -122,10 +136,10 @@ class Renderer:
 		RESOLUTION = 10
 		rendered_block = self.get_rendered_block(block)
 		self.trim_out_of_view(rendered_block)
-		self.normalize(block)
-		self.normalize(self.screen)
+		self.normalize(rendered_block)
+		# self.normalize(self.screen) unnecessary since the quantise step doesn't use the screen for the ranges, it just makes a new one
 		ranges = self.quantize(RESOLUTION)
-		active_partitions = self.project_onto_screen(ranges, block)
+		active_partitions = self.project_onto_screen(ranges, rendered_block)
 		vector = self.create_vector_from_partitions(active_partitions, RESOLUTION)
 		return vector
 
