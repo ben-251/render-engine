@@ -10,12 +10,15 @@ mp.dps = 50
 
 
 class ContinuousRange:
-    def __init__(self, start, stop):
-        self.start = start
-        self.stop = stop
+	def __init__(self, start, stop):
+		if start > stop:
+			raise ValueError("start must be less than or equal to stop")
+		self.start = start
+		self.stop = stop
 
-    def __contains__(self, value):
-        return self.start <= value <= self.stop
+
+	def __contains__(self, value):
+		return self.start <= value <= self.stop
 
 class Camera:
 	x:float
@@ -87,13 +90,20 @@ class Renderer:
 
 	def normalize(self, placed_object:Screen|Block):
 		#TODO: before adding 0.5, we need to make sure it's actually -1 to 1, so we scale everything down to the size of the projected screen
+		self.scale_to_one(placed_object)
+		self.y_translate(placed_object, 0.5)
+
+	def scale_to_one(self, placed_object):
 		placed_object.y /= self.projected_screen.height
 		placed_object.top /= self.projected_screen.height
 		placed_object.bottom /= self.projected_screen.height
 		placed_object.height /= self.projected_screen.height
-		placed_object.y += 0.5
-		placed_object.top += 0.5
-		placed_object.bottom += 0.5
+
+	def y_translate(self, placed_object, amount):
+		placed_object.y += amount
+		placed_object.top += amount
+		placed_object.bottom += amount
+
 	
 	def quantize(self, resolution=5) -> List[ContinuousRange]:
 		'''
@@ -120,11 +130,11 @@ class Renderer:
 
 	def project_onto_screen(self, ranges:List[ContinuousRange], block:Block) -> List[int]:
 		'''
-		Projects the block onto the quantized screen
+		Projects the block onto the quantized screen by returning all the partitions that have a value
 		'''
 		topmost_partition_index = self.find_projected_partition(block.top, ranges)
 		bottommost_partition_index = self.find_projected_partition(block.bottom, ranges)
-		active_partitions = list(range(topmost_partition_index, bottommost_partition_index+1))
+		active_partitions = list(range(bottommost_partition_index, topmost_partition_index+1))
 		return active_partitions
 	
 	def create_vector_from_partitions(self, active_partition_indices:list[int], resolution:int) -> np.typing.NDArray[np.float64]:
@@ -132,15 +142,15 @@ class Renderer:
 		vector[active_partition_indices] = 1
 		return vector
 
-	def generate_position_vector(self, block:Block, resolution:int):
-		RESOLUTION = 10
+	def generate_position_vector(self, block:Block, resolution:Optional[int]=None):
+		resolution = 5 if resolution is None else resolution
 		rendered_block = self.get_rendered_block(block)
 		self.trim_out_of_view(rendered_block)
 		self.normalize(rendered_block)
 		# self.normalize(self.screen) unnecessary since the quantise step doesn't use the screen for the ranges, it just makes a new one
-		ranges = self.quantize(RESOLUTION)
+		ranges = self.quantize(resolution)
 		active_partitions = self.project_onto_screen(ranges, rendered_block)
-		vector = self.create_vector_from_partitions(active_partitions, RESOLUTION)
+		vector = self.create_vector_from_partitions(active_partitions, resolution)
 		return vector
 
 	def generate_all_position_vectors(self, resolution) -> List[np.ndarray]:
@@ -158,14 +168,16 @@ class Renderer:
 	def generate_image(self, rendered_vector:np.ndarray):
 		WIDTH = 100
 		HEIGHT = 500
+		BG_COLOR = (255,255,255)
+		OBJECT_COLOR = (0,0,0)
 		old_width = 1
 		old_height = rendered_vector.shape[0]
 		initial_image = Image.new(mode="RGB",size=(old_width, old_height))
-		color_map = [(255, 255, 255) if val == 0 else (0, 0, 0) for val in rendered_vector]
+		color_map = [BG_COLOR if val == 0 else OBJECT_COLOR for val in rendered_vector[::-1]]
 		initial_image.putdata(color_map)
-		horizontally_scaled_image = initial_image.resize((WIDTH, 1), resample=Image.Resampling.NEAREST)
+		horizontally_scaled_image = initial_image.resize((WIDTH, old_height), resample=Image.Resampling.NEAREST)
 		final_image = horizontally_scaled_image.resize((WIDTH, HEIGHT), resample=Image.Resampling.NEAREST)
-		final_image.show()
+		final_image.show(title="final")
 		
 
 	def render(self, resolution:int):
@@ -173,3 +185,13 @@ class Renderer:
 		vectors = self.generate_all_position_vectors(resolution)
 		rendered_form = self.combine_vectors(vectors, resolution)
 		self.generate_image(rendered_form)
+
+
+
+def test_render():
+	blocks = [
+		Block(2,0.4,0.96)
+	]
+	renderer = Renderer(blocks=blocks, camera=Camera(forced_screen_height=1))
+	renderer.render(500)
+test_render()

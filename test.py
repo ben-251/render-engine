@@ -1,32 +1,14 @@
 from bentests import asserts, test_all, testGroup
-
 from main import * 
-
 import math
-
 from mpmath import mp, atan
+import numpy as np
 
 mp.dps = 50
 
 
 
 class mainTests(testGroup):
-	def test_range_gen(self):
-		renderer = Renderer()
-		ranges = renderer.quantize(resolution=5)
-		asserts.assertAlmostEquals(
-			(ranges[0].start, ranges[0].stop),
-			(0.0, 0.2)
-		)
-
-	def test_range_gen_two(self):
-		renderer = Renderer()
-		ranges = renderer.quantize(resolution=10)
-		asserts.assertAlmostEquals(
-			(ranges[2].start, ranges[2].stop),
-			(0.2, 0.3)
-		)
-
 	def test_get_rendered_block(self):
 		block = Block(1, 0.35, 0.25)
 		renderer = Renderer()
@@ -95,6 +77,21 @@ class mainTests(testGroup):
 		with asserts.assertRaises(ValueError):
 			camera = Camera(theta=0.5,forced_screen_height=1)
 
+	def test_scale_to_one(self):
+		camera = Camera(forced_screen_height=1)
+		renderer = Renderer(camera = camera)
+
+		block = Block(1, 0, 0.25)
+		rendered_block = renderer.get_rendered_block(block)
+		renderer.trim_out_of_view(rendered_block)
+		renderer.scale_to_one(rendered_block)
+
+		asserts.assertAlmostEquals(
+			list(map(float, [rendered_block.y, rendered_block.top, rendered_block.bottom, rendered_block.height])),
+			[0, 0.25, -0.25, 0.5],
+			4
+		)
+
 	def test_normalise_screen_with_big_object(self):
 		block = Block(0.17, -0.012, 0.25)
 		camera = Camera(forced_screen_height=1)
@@ -157,8 +154,6 @@ class mainTests(testGroup):
 			4
 		)
 
-
-
 	def test_normalise_half_contained_object(self): 
 		camera = Camera(forced_screen_height=1)
 		renderer = Renderer(camera = camera)
@@ -174,6 +169,128 @@ class mainTests(testGroup):
 			4
 		)
 
+class continuousRangeTests(testGroup):
+	def test_contains(self):
+		range_  = ContinuousRange(0.1, 0.2)
+		asserts.assertEquals(
+			0.12536251 in range_,
+			True
+		)
+
+	def test_not_contains(self):
+		range_  = ContinuousRange(0.1, 0.2)
+		asserts.assertEquals(
+			0.045 in range_,
+			False
+		)
+
+	def test_contains_but_negative(self):
+		range_  = ContinuousRange(-0.15, -0.1)
+		asserts.assertEquals(
+			-0.143 in range_,
+			True
+		)
+class projectionTests(testGroup):
+	def test_quantize(self):
+		renderer = Renderer()
+		ranges = renderer.quantize(resolution=5)
+		asserts.assertAlmostEquals(
+			(ranges[0].start, ranges[0].stop),
+			(0.0, 0.2)
+		)
+
+	def test_range_quantize_again(self):
+		renderer = Renderer()
+		ranges = renderer.quantize(resolution=10)
+		asserts.assertAlmostEquals(
+			(ranges[2].start, ranges[2].stop),
+			(0.2, 0.3)
+		)
+
+	def test_find_projected_slice(self):
+		renderer = Renderer()
+		ranges = renderer.quantize(resolution=5)
+		y_position = 0.25
+		location = renderer.find_projected_partition(y_position, ranges)
+		asserts.assertEquals(
+			location,
+			1
+		)	
+	
+	def test_find_projected_slice_exact(self):
+		renderer = Renderer()
+		ranges = renderer.quantize(resolution=5)
+		y_position = 0.2
+		location = renderer.find_projected_partition(y_position, ranges)
+		asserts.assertEquals(
+			location,
+			0 # it's in two sections but we go with the first, so the lower one (which will be fine with many pixels)
+		)	
+
+	def test_fail_to_find_projected_slice(self):
+		with asserts.assertRaises(ValueError):
+			renderer = Renderer()
+			ranges = renderer.quantize(resolution=5)
+			y_position = 1.02
+			location = renderer.find_projected_partition(y_position, ranges)
+	
+
+	def test_fail_to_find_projected_slice_negative(self):
+		with asserts.assertRaises(ValueError):
+			renderer = Renderer()
+			ranges = renderer.quantize(resolution=5)
+			y_position = -0.4
+			location = renderer.find_projected_partition(y_position, ranges)
+
+	def test_project_onto_range_contained(self):
+		block = Block(0,0.2,0.2)
+		renderer = Renderer()
+		ranges = renderer.quantize(resolution=10)
+		values = renderer.project_onto_screen(ranges, block)
+		asserts.assertEquals(values,
+			[0,1,2]
+		)
+
+	def test_project_onto_range_partly_out_of_screen(self):
+		initial_block = Block(2,0.4,0.96)
+		renderer = Renderer(camera=Camera(forced_screen_height=1))
+		block = renderer.get_rendered_block(initial_block)
+		renderer.trim_out_of_view(block)
+		renderer.normalize(block)
+		ranges = renderer.quantize(resolution=5)
+		values = renderer.project_onto_screen(ranges, block)
+		asserts.assertEquals(values,
+			[2,3,4]
+		)
+
+	def test_create_vector_from_slices(self):
+		initial_block = Block(2,0.4,0.96)
+		renderer = Renderer(camera=Camera(forced_screen_height=1))
+		block = renderer.get_rendered_block(initial_block)
+		renderer.trim_out_of_view(block)
+		renderer.normalize(block)
+		ranges = renderer.quantize(resolution=5)
+		values = renderer.project_onto_screen(ranges, block)
+		vector = renderer.create_vector_from_partitions(values, 5)
+
+		asserts.assertEquals(
+			vector,
+			np.array([0,0,1,1,1])
+		)	
+
+	def test_add_vectors(self):
+		renderer = Renderer()
+		vectors = [np.array([0,0,1,1,1]), np.array([1,0,1,0,0])] 
+		sum_ = renderer.combine_vectors(vectors, 5)
+		asserts.assertEquals(
+			sum_,
+			np.array([1,0,2,1,1])
+		)
+
+	
+	
+	
+
 	# def test_render(self):
 	# 	blocks = [
 	# 		Block(1.023, 0.237,1)
@@ -181,4 +298,4 @@ class mainTests(testGroup):
 	# 	renderer = Renderer(blocks=blocks)
 	# 	renderer.render(500)
 
-test_all(mainTests)
+test_all(mainTests, continuousRangeTests, projectionTests)
