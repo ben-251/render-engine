@@ -59,6 +59,9 @@ class Renderer:
 		new_y = scale_factor*block.y
 		new_height = scale_factor*block.height
 		new_block = Block(0, new_y, new_height) # the x doesn't matter
+		self.screen.top = self.camera.m * self.BACK_WALL_X
+		self.screen.bottom = -self.camera.m * self.BACK_WALL_X
+		self.screen.height = 2 * self.camera.m * self.BACK_WALL_X
 		return new_block
 
 	def trim_out_of_view(self, block:Block):
@@ -66,12 +69,14 @@ class Renderer:
 		block.bottom = max(block.bottom, -self.camera.m * self.BACK_WALL_X ) # y = -mx
 
 	def normalize(self, placed_object:Screen|Block):
-		#TODO: before adding 0.5, we need to make sure it's actually -1 to 1, since rn it's -mx to mx.
-		# divide both sides by mx
-		normalizing_scale = 1/self.camera.m * self.BACK_WALL_X
+		#TODO: before adding 0.5, we need to make sure it's actually -1 to 1, 
+		# since rn the screen (and everything on it) ranges from -mx to mx.
+		# divide both sides by 2mx (2mx as opposed to mx because it's centered around origin and is yet to be nudged up.)
+		normalizing_scale = 1/(2*self.camera.m * self.BACK_WALL_X)
 		placed_object.y *= normalizing_scale
 		placed_object.top *= normalizing_scale
 		placed_object.bottom *= normalizing_scale
+		placed_object.height *= normalizing_scale
 		placed_object.y += 0.5
 		placed_object.top += 0.5
 		placed_object.bottom += 0.5
@@ -131,11 +136,10 @@ class Renderer:
 			all_vectors.append(vector)
 		return all_vectors
 
-	def combine_vectors(self, vectors:List[np.ndarray], resolution) -> np.ndarray|Literal[0]:
+	def combine_vectors(self, vectors:List[np.ndarray], resolution) -> np.ndarray:
 		#TODO: include colour or at least brightness information here somehow
-		if not vectors:
-			return np.zeros(resolution, dtype=int)
-		return sum(vectors)
+		result_vector = sum(vectors, np.zeros_like(vectors[0]))
+		return result_vector
 
 	def generate_image(self, rendered_vector:np.ndarray):
 		WIDTH = 100
@@ -143,6 +147,8 @@ class Renderer:
 		old_width = 1
 		old_height = rendered_vector.shape[0]
 		initial_image = Image.new(mode="RGB",size=(old_width, old_height))
+		color_map = [(255, 255, 255) if val == 0 else (0, 0, 0) for val in rendered_vector]
+		initial_image.putdata(color_map)
 		horizontally_scaled_image = initial_image.resize((WIDTH, 1), resample=Image.Resampling.NEAREST)
 		final_image = horizontally_scaled_image.resize((WIDTH, HEIGHT), resample=Image.Resampling.NEAREST)
 		final_image.show()
@@ -152,6 +158,4 @@ class Renderer:
 		#TODO: make the user able to pick final image resolution, not the vector size. that should be default of, say, 100.
 		vectors = self.generate_all_position_vectors(resolution)
 		rendered_form = self.combine_vectors(vectors, resolution)
-		if not rendered_form:
-			return np.zeros(resolution, dtype=int)
 		self.generate_image(rendered_form)

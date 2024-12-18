@@ -20,13 +20,6 @@ class mainTests(testGroup):
 			(0.2, 0.3)
 		)
 
-	# def test_render(self):
-	# 	blocks = [
-	# 		Block(1.023, 0.237,1)
-	# 	]
-	# 	renderer = Renderer(blocks=blocks)
-	# 	renderer.render(500)
-
 	def test_get_rendered_block(self):
 		block = Block(1, 0.35, 0.25)
 		renderer = Renderer()
@@ -62,15 +55,39 @@ class mainTests(testGroup):
 			4
 		)
 
-	def test_normalise_screen(self):
-		block = Block(1, 0.35, 0.25)
+	def test_normalise_screen_with_big_object(self):
+		block = Block(0.17, -0.012, 0.25)
 		renderer = Renderer()
 		block = renderer.get_rendered_block(block)
 		renderer.trim_out_of_view(block)
+		renderer.normalize(renderer.screen)
 
 		asserts.assertAlmostEquals(
-			[block.x, block.y, block.height, block.top, block.bottom],
-			[0, 0.7, 0.5, 2*0.414214, 0.45],
+			[renderer.screen.y, renderer.screen.height, renderer.screen.top, renderer.screen.bottom],
+			[0.5, 1, 1, 0],
 			4
 		)
+
+	def test_normalise_big_object(self):
+		block = Block(0.17, -0.012, 0.25)
+		renderer = Renderer()
+		block = renderer.get_rendered_block(block)
+		renderer.trim_out_of_view(block)
+		renderer.normalize(block)
+
+		asserts.assertAlmostEquals(
+			[block.y, block.top, block.bottom],
+			[0.41479245572402982, 1, 0],
+			4
+		)
+
+	#TODO: normalise with objects that don't fill screen.
+
+	def test_render(self):
+		blocks = [
+			Block(1.023, 0.237,1)
+		]
+		renderer = Renderer(blocks=blocks)
+		renderer.render(500)
+
 test_all(mainTests)
