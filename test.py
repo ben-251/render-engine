@@ -271,24 +271,52 @@ class projectionTests(testGroup):
 		renderer.normalize(block)
 		ranges = renderer.quantize(resolution=5)
 		values = renderer.project_onto_screen(ranges, block)
-		vector = renderer.create_vector_from_partitions(values, 5)
+		vector = renderer.create_vector_from_partitions(values, 5, block.color)
 
 		asserts.assertEquals(
 			vector,
-			np.array([0,0,1,1,1])
+			[BG,BG,BLACK,BLACK,BLACK]
 		)	
 
-	def test_add_vectors(self):
-		block1 = Block(0,0,0)
-		block2 = Block(0,0,0)
-		block1.vector = np.array([0,0,1,1,1])
-		block2.vector = np.array([1,0,1,0,0])
+	# def test_add_vectors(self):
+	# 	block1 = Block(0,0,0)
+	# 	block2 = Block(0,0,0)
+	# 	block1.vector = np.array([0,0,1,1,1])
+	# 	block2.vector = np.array([1,0,1,0,0])
 
-		renderer = Renderer(blocks=[block1, block2])
-		sum_ = renderer.combine_vectors()
+	# 	renderer = Renderer(blocks=[block1, block2])
+	# 	sum_ = renderer.combine_vectors()
+	# 	asserts.assertEquals(
+	# 		sum_,
+	# 		np.array([1,0,2,1,1])
+	# 	)
+
+class colorTests(testGroup):
+	def testGetColorMap(self):
+		#TODO: make this pass 
+		resolution = 4
+		blockA = Block(1, 0.75, 0.25, color=(255,255,0)) # Yellow
+		blockB = Block(2, 0.6, 0.24, color=(255, 0, 0)) # Red 
+		blockC = Block(3, 0.8, 0.4, color=(255, 125, 0)) # Orange
+		blockD = Block(4, 0.8, 0.2, color=(0, 125, 255)) # Blue
+
+		# technically doing the projection computation for it but there are tests for this already
+		blockA.vector = [1,1,0,0]
+		blockB.vector = [0,1,1,0]
+		blockC.vector = [1,1,0,0]
+		blockD.vector = [1,0,0,0]
+
+		blocks = [blockA, blockB, blockC, blockD]
+
+		renderer = Renderer(camera=Camera(forced_screen_height=1))
+		vector = renderer.generate_color_vector(blocks, 4)
 		asserts.assertEquals(
-			sum_,
-			np.array([1,0,2,1,1])
+			vector,
+			[
+				(255,255,0),
+				(255,255,0),
+				(255,255,0),
+				(255,255,255)
+			]
 		)
-
-test_all(mainTests, continuousRangeTests, projectionTests)
+test_all(mainTests, continuousRangeTests, projectionTests, colorTests)

@@ -3,11 +3,15 @@
 import math
 from PIL import Image
 import numpy as np
-from typing import Final, List, Optional, Tuple
+from typing import Final, List, Optional, Sequence, Tuple, TypeAlias
 from mpmath import mp, tan, atan
 from numpy.typing import NDArray
 
 mp.dps = 50  
+Color: TypeAlias = Tuple[int,int,int]
+Vec: TypeAlias = Sequence[Color]
+BG:Color = (255,255,255)
+BLACK:Color= (0,0,0)
 
 
 class ContinuousRange:
@@ -76,15 +80,15 @@ class Block:
 		x:float,
 		y:float,
 		height:float,
-		color:Optional[Tuple[int]]=None
+		color:Optional[Tuple[int,int,int]]=None
 	) -> None:
 		self.x:float = x
 		self.y:float = y
 		self.height:float = height
 		self.top:float = self.y + 0.5*self.height
 		self.bottom:float = self.y - 0.5*self.height
-		self.vector:NDArray[np.float64]
-		self.color = (0,0,0) if color is None else color
+		self.vector:Vec = []
+		self.color:Tuple[int,int,int] = (0,0,0) if color is None else color
 
 class Renderer:
 	def __init__(self, blocks:Optional[List[Block]]=None, camera:Optional[Camera]=None) -> None:
@@ -92,8 +96,9 @@ class Renderer:
 		self.screen = Screen()
 		self.blocks:List[Block] = [] if blocks is None else blocks
 		self.projected_screen = ProjectionScreen(self.camera)
+		self.bg_color = BG
 
-	def get_all_vectors(self, blocks:Optional[List[Block]]) -> List[NDArray[np.float64]]:
+	def get_all_vectors(self, blocks:Optional[List[Block]]) -> List[Vec]:
 		blocks = self.blocks if blocks is None else blocks
 		return [block.vector for block in blocks]
 
@@ -157,40 +162,50 @@ class Renderer:
 		active_partitions = list(range(bottommost_partition_index, topmost_partition_index+1))
 		return active_partitions
 	
-	def create_vector_from_partitions(self, active_partition_indices:list[int], resolution:int) -> np.typing.NDArray[np.float64]:
-		vector = np.zeros(resolution, dtype=int)
-		vector[active_partition_indices] = 1
+	def create_vector_from_partitions(self, active_partition_indices:list[int], dimension:int, color) -> List[Tuple[int,int,int]]:
+		vector:List[Tuple[int,int,int]] = [self.bg_color] * dimension
+		for index in active_partition_indices:
+			vector[index] = color 
 		return vector
 
-	def generate_position_vector(self, block:Block, resolution:Optional[int]=None):
-		resolution = 5 if resolution is None else resolution
+	def generate_position_vector(self, block:Block, dimension:Optional[int]=None) -> Vec:
+		dimension = 5 if dimension is None else dimension
 		rendered_block = self.get_rendered_block(block)
 		self.trim_out_of_view(rendered_block)
 		self.normalize(rendered_block)
-		ranges = self.quantize(resolution)
+		ranges = self.quantize(dimension)
 		active_partitions = self.project_onto_screen(ranges, rendered_block)
-		vector = self.create_vector_from_partitions(active_partitions, resolution)
+		vector = self.create_vector_from_partitions(active_partitions, dimension, block.color)
 		return vector
+
+	def generate_color_vector(self, blocks,dim:int) -> Vec:
+		final_vec = [self.bg_color]*dim
+		vectors = self.get_all_vectors(blocks)
+		for i in range(dim):
+			for vector in vectors:
+				if vector[i] != self.bg_color:
+					final_vec[i] = blocks[i].color
+		return final_vec
 
 	def generate_all_position_vectors(self, resolution:int) -> None:
 		for block in self.blocks:
 			vector = self.generate_position_vector(block, resolution)
 			block.vector = vector
 
-	def combine_vectors(self, blocks:Optional[List[Block]]=None) -> NDArray[np.float64]:
-		#TODO: include colours
-		blocks = self.blocks if blocks is None else blocks
-		vectors = self.get_all_vectors(blocks=blocks)
-		result_vector = sum(vectors, np.zeros_like(vectors[0]))
-		return result_vector
+	# def combine_vectors(self, blocks:Optional[List[Block]]=None) -> List[Tuple[int,int,int]]:
+	# 	#TODO: include colours
+	# 	blocks = self.blocks if blocks is None else blocks
+	# 	vectors = self.get_all_vectors(blocks=blocks)
+	# 	result_vector = sum(vectors, [self.bg_color]*len(vectors[0]))
+	# 	return result_vector
 
-	def generate_image(self, rendered_vector:NDArray[np.float64]):
+	def generate_image(self, rendered_vector:Vec):
 		WIDTH:Final[int] = 100
 		HEIGHT:Final[int] = 500
 		BG_COLOR:Final[Tuple[int,int,int]] = (255,255,255)
 		OBJECT_COLOR:Final[Tuple[int, int,int]] = (0,0,0)
 		old_width = 1
-		old_height = rendered_vector.shape[0]
+		old_height = len(rendered_vector)
 		initial_image = Image.new(mode="RGB",size=(old_width, old_height))
 		color_map:List[Tuple[int, int, int]] = [BG_COLOR if val == 0 else OBJECT_COLOR for val in rendered_vector[::-1]]
 		initial_image.putdata(list(color_map)) #type: ignore (it's pedantic cuz PIL is vague)
@@ -201,7 +216,7 @@ class Renderer:
 		# At each level along all vectors, see which is closest to the screen
 		# then set the colour for that pixel to the frontmost colour.
 		vectors = self.get_all_vectors(blocks)
-		dimension = vectors[0].shape[0]
+		dimension = len(vectors[0])
 
 		prepared_vector = self.get_prepared_vector()
 		old_height = prepared_vector.shape[0]
@@ -227,7 +242,8 @@ class Renderer:
 	def render(self, resolution:int):
 		#TODO: make the user able to pick final image resolution, not the vector size. that should be default of, say, 100.
 		self.generate_all_position_vectors(resolution)
-		rendered_form = self.combine_vectors(self.blocks)
+		# rendered_form = self.combine_vectors(self.blocks)
+		rendered_form = self.generate_color_vector(self.blocks, resolution)
 		self.generate_image(rendered_form)
 
 
