@@ -100,6 +100,8 @@ class Renderer:
 		self.camera = Camera() if camera is None else camera
 		self.screen = Screen()
 		self.blocks:List[Block] = [] if blocks is None else blocks
+		for i, block in enumerate(self.blocks):
+			block.id=i+1
 		self.projected_screen = ProjectionScreen(self.camera)
 		self.bg_color = BG
 
