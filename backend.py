@@ -13,6 +13,9 @@ Vec: TypeAlias = Sequence[Color]
 BG:Color = (255,255,255)
 BLACK:Color= (0,0,0)
 
+class OutOfRangeError(Exception): ...
+class NotFounderror(Exception): ...
+
 
 class ContinuousRange:
 	def __init__(self, start:float, stop:float):
@@ -80,7 +83,8 @@ class Block:
 		x:float,
 		y:float,
 		height:float,
-		color:Optional[Tuple[int,int,int]]=None
+		color:Optional[Tuple[int,int,int]]=None,
+		id:Optional[int]=None
 	) -> None:
 		self.x:float = x
 		self.y:float = y
@@ -89,6 +93,7 @@ class Block:
 		self.bottom:float = self.y - 0.5*self.height
 		self.vector:Vec = []
 		self.color:Tuple[int,int,int] = (0,0,0) if color is None else color
+		self.id = id
 
 class Renderer:
 	def __init__(self, blocks:Optional[List[Block]]=None, camera:Optional[Camera]=None) -> None:
@@ -97,6 +102,13 @@ class Renderer:
 		self.blocks:List[Block] = [] if blocks is None else blocks
 		self.projected_screen = ProjectionScreen(self.camera)
 		self.bg_color = BG
+
+	def retrieve_block_from_id(self, block_id:int):
+		for block in self.blocks:
+			if block.id == block_id:
+				return block
+		raise NotFounderror
+				
 
 	def get_all_vectors(self, blocks:Optional[List[Block]]) -> List[Vec]:
 		blocks = self.blocks if blocks is None else blocks
@@ -110,6 +122,7 @@ class Renderer:
 		return new_block
 
 	def trim_out_of_view(self, block:Block):
+		# set top and bottom to top if they're higher than top, and bottom if lower than bottom wait no better to just catch the "out of screen" error while rendering
 		block.top = min(block.top, self.projected_screen.top)
 		block.bottom = max(block.bottom, self.projected_screen.bottom)
 
@@ -151,14 +164,17 @@ class Renderer:
 		for i, partition in enumerate(partitions):
 			if y_position in partition:
 				return i
-		raise ValueError("Object is outside the screen and could not be mapped")
+		raise OutOfRangeError("Object is outside the screen and could not be mapped")
 
 	def project_onto_screen(self, ranges:List[ContinuousRange], block:Block) -> List[int]:
 		'''
 		Projects the block onto the quantized screen by returning all the partitions that have a value
 		'''
-		topmost_partition_index = self.find_projected_partition(block.top, ranges)
-		bottommost_partition_index = self.find_projected_partition(block.bottom, ranges)
+		try:
+			topmost_partition_index = self.find_projected_partition(block.top, ranges)
+			bottommost_partition_index = self.find_projected_partition(block.bottom, ranges)
+		except OutOfRangeError:
+			return []
 		active_partitions = list(range(bottommost_partition_index, topmost_partition_index+1))
 		return active_partitions
 	
@@ -177,17 +193,19 @@ class Renderer:
 		active_partitions = self.project_onto_screen(ranges, rendered_block)
 		vector = self.create_vector_from_partitions(active_partitions, dimension, block.color)
 		return vector
+	
 
-	def generate_color_vector(self, blocks,dim:int) -> Vec:
+	def generate_color_vector(self, blocks:List[Block],dim:int) -> Vec:
 		final_vec = [self.bg_color]*dim
-		vectors = self.get_all_vectors(blocks)
+		sorted_blocks = sorted(blocks, key=lambda block: block.x, reverse=True)
 		for i in range(dim):
-			for vector in vectors:
-				if vector[i] != self.bg_color:
-					final_vec[i] = blocks[i].color
-		return final_vec
+			for block in sorted_blocks:
+				if block.vector[i] != self.bg_color:
+					final_vec[i] = block.color
+		return final_vec[::-1]
 
-	def generate_all_position_vectors(self, resolution:int) -> None:
+	def generate_all_position_vectors(self, resolution:Optional[int]=None) -> None:
+		resolution = 1000 if resolution is None else resolution
 		for block in self.blocks:
 			vector = self.generate_position_vector(block, resolution)
 			block.vector = vector
@@ -199,51 +217,24 @@ class Renderer:
 	# 	result_vector = sum(vectors, [self.bg_color]*len(vectors[0]))
 	# 	return result_vector
 
-	def generate_image(self, rendered_vector:Vec):
-		WIDTH:Final[int] = 100
-		HEIGHT:Final[int] = 500
-		BG_COLOR:Final[Tuple[int,int,int]] = (255,255,255)
-		OBJECT_COLOR:Final[Tuple[int, int,int]] = (0,0,0)
-		old_width = 1
-		old_height = len(rendered_vector)
-		initial_image = Image.new(mode="RGB",size=(old_width, old_height))
-		color_map:List[Tuple[int, int, int]] = [BG_COLOR if val == 0 else OBJECT_COLOR for val in rendered_vector[::-1]]
-		initial_image.putdata(list(color_map)) #type: ignore (it's pedantic cuz PIL is vague)
-		final_image = initial_image.resize((WIDTH, HEIGHT), resample=Image.Resampling.NEAREST)
-		final_image.show(title="final")
-
-	def generate_image_new(self, blocks) -> None:
+	def generate_image(self, blocks, image_size:Optional[Tuple[int,int]]=None) -> Image.Image:
 		# At each level along all vectors, see which is closest to the screen
 		# then set the colour for that pixel to the frontmost colour.
+		image_size = (100,500) if image_size is None else image_size
 		vectors = self.get_all_vectors(blocks)
 		dimension = len(vectors[0])
 
-		prepared_vector = self.get_prepared_vector()
-		old_height = prepared_vector.shape[0]
-		initial_image = Image.new(mode="RGB",size=(1, old_height))
+		initial_image = Image.new(mode="RGB",size=(1, dimension))
 
-		color_map = self.generate_color_map(blocks, dimension)
+		color_map = self.generate_color_vector(blocks, dimension)
 		initial_image.putdata(list(color_map)) #type: ignore (it's pedantic cuz PIL is vague)
 
-		rescaled_image = initial_image.resize((100,500), resample=Image.Resampling.NEAREST)
+		rescaled_image = initial_image.resize((image_size[0],image_size[1]), resample=Image.Resampling.NEAREST)
 		
-		rescaled_image.show(title="final")
-		
+		return rescaled_image
 
-	def generate_color_map(self, blocks, dimension):
-		color_priorities = [(0,0,0)]*7
-		color_map:List[Tuple[int, int, int]] = [color_priorities[i] for i in range(dimension)]
-		return color_map
-	
-	def get_prepared_vector(self):
-		prepared_vector = np.zeros(7) # for the time being
-		return prepared_vector
-
-	def render(self, resolution:int):
-		#TODO: make the user able to pick final image resolution, not the vector size. that should be default of, say, 100.
-		self.generate_all_position_vectors(resolution)
-		# rendered_form = self.combine_vectors(self.blocks)
-		rendered_form = self.generate_color_vector(self.blocks, resolution)
-		self.generate_image(rendered_form)
+	def render(self, image_size:Optional[Tuple[int,int]]=None):
+		self.generate_all_position_vectors()
+		self.generate_image(self.blocks, image_size).show()
 
 

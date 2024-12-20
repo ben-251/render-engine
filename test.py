@@ -1,4 +1,4 @@
-# type:ignore
+# ktype:ignore
 
 from bentests import asserts, test_all, testGroup
 from backend import * 
@@ -228,7 +228,7 @@ class projectionTests(testGroup):
 		)	
 
 	def test_fail_to_find_projected_slice(self):
-		with asserts.assertRaises(ValueError):
+		with asserts.assertRaises(OutOfRangeError):
 			renderer = Renderer()
 			ranges = renderer.quantize(resolution=5)
 			y_position = 1.02
@@ -236,7 +236,7 @@ class projectionTests(testGroup):
 	
 
 	def test_fail_to_find_projected_slice_negative(self):
-		with asserts.assertRaises(ValueError):
+		with asserts.assertRaises(OutOfRangeError):
 			renderer = Renderer()
 			ranges = renderer.quantize(resolution=5)
 			y_position = -0.4
@@ -276,7 +276,23 @@ class projectionTests(testGroup):
 		asserts.assertEquals(
 			vector,
 			[BG,BG,BLACK,BLACK,BLACK]
+		)
+
+	def test_create_vector_out_of_range_from_slices(self):
+		initial_block = Block(2,200,0.96)
+		renderer = Renderer(camera=Camera(forced_screen_height=1))
+		block = renderer.get_rendered_block(initial_block)
+		renderer.trim_out_of_view(block)
+		renderer.normalize(block)
+		ranges = renderer.quantize(resolution=5)
+		values = renderer.project_onto_screen(ranges, block)
+		vector = renderer.create_vector_from_partitions(values, 5, block.color)
+
+		asserts.assertEquals(
+			vector,
+			[BG,BG,BG,BG,BG]
 		)	
+	
 
 	# def test_add_vectors(self):
 	# 	block1 = Block(0,0,0)
@@ -301,10 +317,12 @@ class colorTests(testGroup):
 		blockD = Block(4, 0.8, 0.2, color=(0, 125, 255)) # Blue
 
 		# technically doing the projection computation for it but there are tests for this already
-		blockA.vector = [1,1,0,0]
-		blockB.vector = [0,1,1,0]
-		blockC.vector = [1,1,0,0]
-		blockD.vector = [1,0,0,0]
+		blockA.vector = [blockA.color,blockA.color,BG, BG]
+		blockB.vector = [BG,blockB.color,blockB.color,BG]
+		blockC.vector = [blockC.color,blockC.color,BG,BG]
+		blockD.vector = [blockD.color,BG,BG,BG]
+
+		# expected = [A, A, B, 0] -> [0, B, A, A] (so it's right side up)
 
 		blocks = [blockA, blockB, blockC, blockD]
 
@@ -313,10 +331,11 @@ class colorTests(testGroup):
 		asserts.assertEquals(
 			vector,
 			[
+				(255,255,255),
+				(255,0,0),
 				(255,255,0),
-				(255,255,0),
-				(255,255,0),
-				(255,255,255)
+				(255,255,0)	
 			]
 		)
+
 test_all(mainTests, continuousRangeTests, projectionTests, colorTests)
